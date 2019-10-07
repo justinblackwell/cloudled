@@ -73,11 +73,15 @@ void loop() {
     ledsToLight = coords[x];
   
     fadeToBlackBy( leds[x], NUM_LEDS, 50);
-//    fill_rainbow(leds[x], coords[x], gHue, 7);
+
 //    fill_solid(leds[x], NUM_LEDS, CRGB::LightSkyBlue);
+//    leds[x][coords[x]] = CRGB::Red;
+//    bpm(x);
+    flame(x, 8, coords[x]);
+//      fill_rainbow(leds[x], coords[x], gHue, 7);
 //    fill_gradient_RGB(leds[x], 0, CRGB::LightSkyBlue, coords[x], CRGB::Azure);
 //      fill_gradient_RGB(leds[x], coords[x], CRGB::DarkBlue, NUM_LEDS, CRGB::Orange);
-    addGlitter(map(coords[x], 0, NUM_LEDS, 15, 95), x);
+//    addGlitter(map(coords[x], 0, NUM_LEDS, 15, 95), x);
 //    confetti(x);
 
 
@@ -137,22 +141,6 @@ void calculateCoords(){
 //  
 //} // ease()
 
-int cycleNumber(int input, int minVal, int maxVal){
-  static bool dir = true; 
-  if(dir){ // if ascending direction
-    if(++input > maxVal){
-      dir = false; 
-      input -= 2;
-    }
-  } else {
-    if(--input < minVal){
-      dir = true;
-      input += 2;
-    }
-  }
-  return input;
-}
-
 
 void sinelon(int strip)
 {
@@ -189,6 +177,15 @@ void confetti(int strip)
   leds[strip][pos] += CHSV( gHue + random8(64), 200, 255);
 }
 
+void flame(uint8_t strip, uint8_t startPosition, uint8_t flameHeight){
+  uint8_t beat = cubicwave8(32);
+  CRGBPalette16 palette = HeatColors_p;
+  for( int i = startPosition; i <= flameHeight && i < NUM_LEDS; i++) { 
+    leds[strip][i] = ColorFromPalette(palette, i*10, beat+(i*10));
+//    leds[strip][max(startPosition - i,0)] = ColorFromPalette(palette, gHue+(i*2), beat-gHue+(i*10));
+  }
+}
+
 void bpm(int strip)
 {
   // colored stripes pulsing at a defined Beats-Per-Minute (BPM)
@@ -197,6 +194,7 @@ void bpm(int strip)
   uint8_t beat = beatsin8( BeatsPerMinute, 64, 255);
   for( int i = 0; i < NUM_LEDS; i++) { //9948
     leds[strip][i] = ColorFromPalette(palette, gHue+(i*2), beat-gHue+(i*10));
+    
   }
 }
 
