@@ -1,6 +1,7 @@
 #include <MPU6050.h>
 #include <Wire.h>
 #include <FastLED.h>
+#include "EasingLib.h"
 
 FASTLED_USING_NAMESPACE
 
@@ -9,19 +10,46 @@ FASTLED_USING_NAMESPACE
 #define NUM_LEDS    18
 #define NUM_STRIPS 8
 #define LEDS_PER_STRIP 18 
-#define BRIGHTNESS          10
-#define FRAMES_PER_SECOND  120
-#define MIN_LIT 0
+#define BRIGHTNESS          5
+#define FRAMES_PER_SECOND  128
+#define MIN_LIT 5
 
-CRGB leds[NUM_STRIPS][NUM_LEDS];
+#define FADE_RATE 200
+#define DRIP_RATE_FAST 250
+#define DRIP_RATE_SLOW 1500
+#define TILT_ANGLE_LOW -30
+#define TILT_ANGLE_HIGH 30
+
+CRGB leds[NUM_STRIPS][NUM_LEDS]; // holder of all LED CRGB values
 
 uint8_t gHue = 0; // rotating "base color" used by many of the patterns
-fract8 prob = 50; // prob of glitter 
+
 MPU6050 mpu; // gyro device
-int coords[8] = {
-  9,9,9,9,9,9,9,9 // for "tilting" leds
+bool noGyro = false;
+
+uint8_t coords[8] = { // default coords set to all leds lit
+  NUM_LEDS, NUM_LEDS, NUM_LEDS, NUM_LEDS, 
+  NUM_LEDS, NUM_LEDS, NUM_LEDS, NUM_LEDS
 };
-uint8_t ledsToLight = NUM_LEDS;
+
+int8_t angles[8] = { // init all angles to equator 
+  0, 0, 0, 0,
+  0, 0, 0, 0 
+};
+
+// @todo should be uint8_t[]
+uint8_t ledsToLight = NUM_LEDS; // limits for leds to light 
+
+Easing *easings[8] = {
+  new Easing(),
+  new Easing(),
+  new Easing(),
+  new Easing(),
+  new Easing(),
+  new Easing(),
+  new Easing(),
+  new Easing()
+};
 
 void setup() {
   
@@ -46,164 +74,155 @@ void setup() {
 
   Serial.println("Initialize MPU6050");
 
-  // attempt x times before recovering
-  while(!mpu.begin(MPU6050_SCALE_2000DPS, MPU6050_RANGE_2G))
+  uint8_t gyro_tries = 10; // attempt gyro detect for 5 seconds
+  while(!mpu.begin(MPU6050_SCALE_2000DPS, MPU6050_RANGE_2G) && --gyro_tries > 0)
   {
     Serial.println("Could not find a valid MPU6050 sensor, check wiring!");
     delay(500);
+  }
+  if(gyro_tries < 1){
+    noGyro = true;
+  }
+
+  for(int strip = 0 ; strip < 8 ; strip++){
+    easings[strip]->Init(0);
+    easings[strip]->SetSetpoint(NUM_LEDS-1);
+    easings[strip]->SetMode(EASE_IN_QUINT);
+    easings[strip]->SetMillisInterval(2000);
   }
   
 }
 
 void loop() {
 
-  for(int x = 0; x < NUM_STRIPS ; x++){
-    
-//    FastLED.clear();
-
-//    rainbow(x);
-//    sinelon(x);
-//    bpm(x);
-//    juggle(x);
-//    fadeToBlackBy( leds[x], NUM_LEDS, 20); addGlitter(60, x);
-//    fadeToBlackBy( leds[x], NUM_LEDS, 20); addGlitter(prob, x);
-//    rainbowWithGlitter(x);
-//    confetti(x);
-
-    ledsToLight = coords[x];
-  
-    fadeToBlackBy( leds[x], NUM_LEDS, 50);
-
-//    fill_solid(leds[x], NUM_LEDS, CRGB::LightSkyBlue);
-//    leds[x][coords[x]] = CRGB::Red;
-//    bpm(x);
-    flame(x, 8, coords[x]);
-//      fill_rainbow(leds[x], coords[x], gHue, 7);
-//    fill_gradient_RGB(leds[x], 0, CRGB::LightSkyBlue, coords[x], CRGB::Azure);
-//      fill_gradient_RGB(leds[x], coords[x], CRGB::DarkBlue, NUM_LEDS, CRGB::Orange);
-//    addGlitter(map(coords[x], 0, NUM_LEDS, 15, 95), x);
-//    confetti(x);
-
-
-//    fill_rainbow(leds[x], x+1, gHue, 7); // test pattern - identify strips
-  }
-  
-  EVERY_N_MILLISECONDS( 50 ) { gHue+= 1; } // slowly cycle the "base color" through the rainbow
+//  EVERY_N_MILLISECONDS( 50 ) { gHue+= 1; } // slowly cycle the "base color" through the rainbow
   EVERY_N_MILLISECONDS( 100 ) { calculateCoords(); } // calculate tilt angles
-  
+
+  for(int x = 0; x < NUM_STRIPS ; x++){
+
+    waterdrop(x);
+
+
+// alternative examples
+//    ledsToLight = coords[x];
+//    ledsToLight = NUM_LEDS;
+//    fill_rainbow( leds[x], NUM_LEDS, gHue, 7);
+//    addGlitter(x, .5);
+//    addGlitter(map(coords[x], 0, NUM_LEDS, 15, 95), x); // glitter with intensity matching tilt
+//    leds[x][coords[x]] = CRGB::Red; // test pattern showing gyro orientation
+//    fill_rainbow(leds[x], x+1, gHue, 7); // test pattern - identify strips
+
+  }
+    
   FastLED.show();
   FastLED.delay(1000/FRAMES_PER_SECOND);
 
-//  Serial.print("max_brightness_for_power_mW"); Serial.println( calculate_max_brightness_for_power_mW(leds[0], NUM_LEDS, 5, 500));
+//  Serial.print("max_brightness_for_power_mW: "); Serial.println( calculate_max_brightness_for_power_mW(leds[0], NUM_LEDS, 5, 500));
 }
 
-
 void calculateCoords(){
-  Vector normAccel = mpu.readNormalizeAccel(); // Read normalized values 
-  
+  if(!noGyro){
+    Vector normAccel = mpu.readNormalizeAccel(); // Read normalized values 
+
+//  Alternative way of reading gyro 
 //  Vector normAccel = mpu.readNormalizeGyro();
 //  // Calculate Pitch, Roll and Yaw
 //  pitch = pitch + norm.YAxis * timeStep;
 //  roll = roll + norm.XAxis * timeStep;
 //  yaw = yaw + norm.ZAxis * timeStep;
 
-  // Calculate Pitch & Roll
-  coords[0] = (atan2(normAccel.YAxis, normAccel.ZAxis)*180.0)/M_PI;
-  coords[2] = (atan2(normAccel.XAxis, sqrt(normAccel.YAxis*normAccel.YAxis + normAccel.ZAxis*normAccel.ZAxis))*180.0)/M_PI;
-  
-  coords[4] = -1 * coords[0];
-  coords[6] = -1 * coords[2];
-  
-  coords[1] = (coords[0] + coords[2]) / 2;
-  coords[5] = (coords[4] + coords[6]) / 2;
-  
-  coords[3] = (coords[2] + coords[4]) / 2;
-  coords[7] = (coords[0] + coords[6]) / 2;
-
-  for(uint8_t x = 0 ; x < NUM_STRIPS ; x++){
-     coords[x] = map(coords[x], -90, 90, MIN_LIT, NUM_LEDS);
-  }
-}
-
-//void ease() {
-//
-//  static uint8_t easeOutVal = 0;
-//  static uint8_t easeInVal  = 0;
-//  static uint8_t lerpVal    = 0;
-//
-//  easeOutVal = ease8InOutCubic(easeInVal);                     // Start with easeInVal at 0 and then go to 255 for the full easing.
-//  easeInVal++;
-//
-//  lerpVal = lerp8by8(0, NUM_LEDS, easeOutVal);                // Map it to the number of LED's you have.
-//
-//  leds[lerpVal] = CRGB::Red;
-//  fadeToBlackBy(leds, NUM_LEDS, 16);                          // 8 bit, 1 = slow fade, 255 = fast fade
-//  
-//} // ease()
-
-
-void sinelon(int strip)
-{
-  // a colored dot sweeping back and forth, with fading trails
-  fadeToBlackBy( leds[strip], NUM_LEDS, 20);
-  int pos = beatsin16( 13, 0, NUM_LEDS-1 );
-  leds[strip][pos] += CHSV( gHue, 255, 192);
-}
-
-void rainbow(int strip) 
-{
-  fill_rainbow( leds[strip], NUM_LEDS, gHue, 7);
-}
-
-void rainbowWithGlitter(int strip) 
-{
-  // built-in FastLED rainbow, plus some random sparkly glitter
-  rainbow(strip);
-  addGlitter(80, strip);
-}
-
-void addGlitter( fract8 chanceOfGlitter, int strip) 
-{
-  if( random8() < chanceOfGlitter) {
-    leds[strip][ random16(ledsToLight) ] += CRGB::White;
-  }
-}
-
-void confetti(int strip) 
-{
-  // random colored speckles that blink in and fade smoothly
-  fadeToBlackBy( leds[strip], NUM_LEDS, 10);
-  int pos = random16(ledsToLight);
-  leds[strip][pos] += CHSV( gHue + random8(64), 200, 255);
-}
-
-void flame(uint8_t strip, uint8_t startPosition, uint8_t flameHeight){
-  uint8_t beat = cubicwave8(32);
-  CRGBPalette16 palette = HeatColors_p;
-  for( int i = startPosition; i <= flameHeight && i < NUM_LEDS; i++) { 
-    leds[strip][i] = ColorFromPalette(palette, i*10, beat+(i*10));
-//    leds[strip][max(startPosition - i,0)] = ColorFromPalette(palette, gHue+(i*2), beat-gHue+(i*10));
-  }
-}
-
-void bpm(int strip)
-{
-  // colored stripes pulsing at a defined Beats-Per-Minute (BPM)
-  uint8_t BeatsPerMinute = 20;
-  CRGBPalette16 palette = PartyColors_p;
-  uint8_t beat = beatsin8( BeatsPerMinute, 64, 255);
-  for( int i = 0; i < NUM_LEDS; i++) { //9948
-    leds[strip][i] = ColorFromPalette(palette, gHue+(i*2), beat-gHue+(i*10));
+    // Calculate Pitch & Roll
+    angles[2] = (atan2(normAccel.YAxis, normAccel.ZAxis)*180.0)/M_PI;
+    angles[0] = -(atan2(normAccel.XAxis, sqrt(normAccel.YAxis*normAccel.YAxis + normAccel.ZAxis*normAccel.ZAxis))*180.0)/M_PI;
     
+    angles[4] = -1 * angles[0];
+    angles[6] = -1 * angles[2];
+    
+    angles[1] = (angles[0] + angles[2]) / 2;
+    angles[5] = (angles[4] + angles[6]) / 2;
+    
+    angles[3] = (angles[2] + angles[4]) / 2;
+    angles[7] = (angles[0] + angles[6]) / 2;
+  }
+
+  
+  for(uint8_t x = 0 ; x < NUM_STRIPS ; x++){
+     // map angles to led positions
+     coords[x] = map(angles[x], -90, 90, MIN_LIT, NUM_LEDS);
+  }
+  
+}
+
+void waterdrop(int strip)
+{
+  
+  fadeToBlackBy( leds[strip], NUM_LEDS, FADE_RATE);
+
+  long inter = map(constrain(angles[strip], TILT_ANGLE_LOW, TILT_ANGLE_HIGH), TILT_ANGLE_LOW, TILT_ANGLE_HIGH, DRIP_RATE_FAST, DRIP_RATE_SLOW);
+  easings[strip]->SetMillisInterval( inter ); // map angle of tilt to interval
+//  easings[strip]->SetMode(EASE_IN_CUBIC);
+//  easings[strip]->SetSetpoint(NUM_LEDS);
+  float val = easings[strip]->GetValue();
+  int pos = constrain(round(val), 0, NUM_LEDS-1);
+  leds[strip][pos] += CRGB::Blue;
+  if(val == easings[strip]->GetSetpoint(1)){ // @todo Any other way to know when "done"; (bool) _active is private member
+    easings[strip]->Init(0);
+    easings[strip]->SetSetpoint(NUM_LEDS-1 * .00001); // adding multiplier to ensure we miss setPoint while easing past for "bounce" affect
+  }
+
+//  Serial.print("strip: ");
+//  Serial.print(strip);
+//  Serial.print(" pos: ");
+//  Serial.println(pos);
+  
+}
+
+// thunder simulator
+void thunder( fract8 chanceOfThunder, int strip) 
+{
+  if( random8() < chanceOfThunder) {
+    leds[strip][ random16(NUM_LEDS) ] += CRGB::White;
   }
 }
 
-void juggle(int strip) {
-  // eight colored dots, weaving in and out of sync with each other
-   fadeToBlackBy( leds[strip], NUM_LEDS, 20);
-  byte dothue = 0;
-  for( int i = 0; i < 8; i++) {
-    leds[strip][beatsin16( i+7, 0, NUM_LEDS-1 )] |= CHSV(dothue, 200, 255);
-    dothue += 32;
-  }
-}
+
+
+/* old code */
+
+
+//void rainbow(int strip) 
+//{
+//  fill_rainbow( leds[strip], ledsToLight, gHue, 7);
+//}
+
+//void rainbowWithGlitter(int strip) 
+//{
+//  // built-in FastLED rainbow, plus some random sparkly glitter
+//  rainbow(strip);
+//  addGlitter(80, strip);
+//}
+
+//void flame(uint8_t strip, uint8_t startPosition, uint8_t flameHeight){
+//  uint8_t beat = cubicwave8(32);
+//  CRGBPalette16 palette = HeatColors_p;
+//  for( int i = startPosition; i <= flameHeight && i < NUM_LEDS; i++) { 
+//    leds[strip][i] = ColorFromPalette(palette, i*10, beat+(i*10));
+////    leds[strip][max(startPosition - i,0)] = ColorFromPalette(palette, gHue+(i*2), beat-gHue+(i*10));
+//  }
+//}
+
+//void bpm(int strip, int angle)
+//{
+//  // colored stripes pulsing at a defined Beats-Per-Minute (BPM)
+////  uint8_t BeatsPerMinute = 100;
+//  uint8_t BeatsPerMinute = map(angle, -90, 90, 50, 80);
+////  CRGBPalette16 palette = PartyColors_p;
+////  CRGBPalette16 palette = OceanColors_p; // CloudColors_p
+//  CRGBPalette16 palette = CloudColors_p;
+//
+//  uint8_t beat = beatsin8( BeatsPerMinute, 64, 255);
+//  for( int i = 0; i < NUM_LEDS; i++) { //9948
+//    leds[strip][i] = ColorFromPalette(palette, gHue+(i*2), beat-gHue+(i*10));
+//    
+//  }
+//}
