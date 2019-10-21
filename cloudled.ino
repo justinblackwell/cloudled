@@ -84,11 +84,11 @@ void setup() {
     noGyro = true;
   }
 
-  for(int strip = 0 ; strip < 8 ; strip++){
+  for(int strip = 0 ; strip < 8 ; strip++){ 
     easings[strip]->Init(0);
     easings[strip]->SetSetpoint(NUM_LEDS-1);
     easings[strip]->SetMode(EASE_IN_QUINT);
-    easings[strip]->SetMillisInterval(2000);
+    easings[strip]->SetMillisInterval( (DRIP_RATE_SLOW - DRIP_RATE_FAST) / 2);
   }
   
 }
