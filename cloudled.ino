@@ -112,9 +112,10 @@ void loop() {
 //    leds[x][coords[x]] = CRGB::Red; // test pattern showing gyro orientation
 //    fill_rainbow(leds[x], x+1, gHue, 7); // test pattern - identify strips
 
+    FastLED.show();
   }
     
-  FastLED.show();
+  
   FastLED.delay(1000/FRAMES_PER_SECOND);
 
 //  Serial.print("max_brightness_for_power_mW: "); Serial.println( calculate_max_brightness_for_power_mW(leds[0], NUM_LEDS, 5, 500));
