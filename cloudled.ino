@@ -10,15 +10,16 @@ FASTLED_USING_NAMESPACE
 #define NUM_LEDS    18
 #define NUM_STRIPS 8
 #define LEDS_PER_STRIP 18 
-#define BRIGHTNESS          5
+#define BRIGHTNESS          80
 #define FRAMES_PER_SECOND  128
 #define MIN_LIT 5
 
-#define FADE_RATE 200
+#define FADE_RATE 120
 #define DRIP_RATE_FAST 250
-#define DRIP_RATE_SLOW 1500
-#define TILT_ANGLE_LOW -30
-#define TILT_ANGLE_HIGH 30
+#define DRIP_RATE_SLOW 2500
+#define DRIP_MODE EASE_IN_QUAD
+#define TILT_ANGLE_LOW -15
+#define TILT_ANGLE_HIGH 25
 
 CRGB leds[NUM_STRIPS][NUM_LEDS]; // holder of all LED CRGB values
 
@@ -38,7 +39,7 @@ int8_t angles[8] = { // init all angles to equator
 };
 
 // @todo should be uint8_t[]
-uint8_t ledsToLight = NUM_LEDS; // limits for leds to light 
+uint8_t ledsToLight = NUM_LEDS-1; // limits for leds to light 
 
 Easing *easings[8] = {
   new Easing(),
@@ -87,21 +88,33 @@ void setup() {
   for(int strip = 0 ; strip < 8 ; strip++){ 
     easings[strip]->Init(0);
     easings[strip]->SetSetpoint(NUM_LEDS-1);
-    easings[strip]->SetMode(EASE_IN_QUINT);
+    easings[strip]->SetMode(DRIP_MODE);
     easings[strip]->SetMillisInterval( (DRIP_RATE_SLOW - DRIP_RATE_FAST) / 2);
   }
   
 }
 
+bool doLightning = false;
+
 void loop() {
 
-//  EVERY_N_MILLISECONDS( 50 ) { gHue+= 1; } // slowly cycle the "base color" through the rainbow
+  EVERY_N_MILLISECONDS( 1000/FRAMES_PER_SECOND ) { gHue += 16; } // slowly cycle the "base color" through the rainbow
   EVERY_N_MILLISECONDS( 100 ) { calculateCoords(); } // calculate tilt angles
+//  EVERY_N_MILLISECONDS( 5000 ) { doLightning = doLightning ? false : true; } // calculate tilt angles
 
   for(int x = 0; x < NUM_STRIPS ; x++){
-
-    waterdrop(x);
-
+    
+//    rainbow(x);
+    if(angles[x] < -12){
+      rainbow(x, coords[x]);
+    } else {
+      if(doLightning){
+        lightning(60, x);
+      } else {
+        waterdrop(x);
+      }
+    }
+    
 
 // alternative examples
 //    ledsToLight = coords[x];
@@ -156,7 +169,6 @@ void calculateCoords(){
 
 void waterdrop(int strip)
 {
-  
   fadeToBlackBy( leds[strip], NUM_LEDS, FADE_RATE);
 
   long inter = map(constrain(angles[strip], TILT_ANGLE_LOW, TILT_ANGLE_HIGH), TILT_ANGLE_LOW, TILT_ANGLE_HIGH, DRIP_RATE_FAST, DRIP_RATE_SLOW);
@@ -165,7 +177,12 @@ void waterdrop(int strip)
 //  easings[strip]->SetSetpoint(NUM_LEDS);
   float val = easings[strip]->GetValue();
   int pos = constrain(round(val), 0, NUM_LEDS-1);
-  leds[strip][pos] += CRGB::Blue;
+  
+//  leds[strip][pos] += CRGB::Aqua;
+  // random color from pallete 
+  CRGBPalette16 palette = CloudColors_p;
+  leds[strip][pos] |= ColorFromPalette(palette, gHue, 200);
+  
   if(val == easings[strip]->GetSetpoint(1)){ // @todo Any other way to know when "done"; (bool) _active is private member
     easings[strip]->Init(0);
     easings[strip]->SetSetpoint(NUM_LEDS-1 * .00001); // adding multiplier to ensure we miss setPoint while easing past for "bounce" affect
@@ -178,12 +195,13 @@ void waterdrop(int strip)
   
 }
 
-// thunder simulator
-void thunder( fract8 chanceOfThunder, int strip) 
+// lightning simulator
+void lightning( fract8 chanceOfLightning, int strip) 
 {
-  if( random8() < chanceOfThunder) {
+  if( random8() < chanceOfLightning) {
     leds[strip][ random16(NUM_LEDS) ] += CRGB::White;
   }
+  fadeToBlackBy( leds[strip], NUM_LEDS, FADE_RATE);
 }
 
 
@@ -191,10 +209,10 @@ void thunder( fract8 chanceOfThunder, int strip)
 /* old code */
 
 
-//void rainbow(int strip) 
-//{
-//  fill_rainbow( leds[strip], ledsToLight, gHue, 7);
-//}
+void rainbow(int strip, uint8_t howfar) 
+{
+  fill_rainbow( leds[strip], howfar ? howfar : NUM_LEDS, gHue, 7);
+}
 
 //void rainbowWithGlitter(int strip) 
 //{
