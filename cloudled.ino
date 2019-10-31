@@ -13,6 +13,7 @@ FASTLED_USING_NAMESPACE
 #define BRIGHTNESS          80
 #define FRAMES_PER_SECOND  128
 #define MIN_LIT 5
+#define RAINBOW_ANGLE -12
 
 #define FADE_RATE 120
 #define DRIP_RATE_FAST 250
@@ -105,7 +106,7 @@ void loop() {
   for(int x = 0; x < NUM_STRIPS ; x++){
     
 //    rainbow(x);
-    if(angles[x] < -12){
+    if(angles[x] <= RAINBOW_ANGLE){
       rainbow(x, coords[x]);
     } else {
       if(doLightning){
