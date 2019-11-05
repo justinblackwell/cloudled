@@ -15,17 +15,19 @@ FASTLED_USING_NAMESPACE
 #define MIN_LIT 5
 #define RAINBOW_ANGLE -12
 
-#define FADE_RATE 120
+#define FADE_RATE 250
 #define DRIP_RATE_FAST 250
 #define DRIP_RATE_SLOW 2500
-#define DRIP_MODE EASE_IN_QUAD
+#define DRIP_MODE EASE_IN_QUINT
 #define TILT_ANGLE_LOW -15
 #define TILT_ANGLE_HIGH 25
 
 CRGB leds[NUM_STRIPS][NUM_LEDS]; // holder of all LED CRGB values
 
 uint8_t gHue = 0; // rotating "base color" used by many of the patterns
+uint8_t rainbowHue = 0;
 
+bool doLightning = false;
 MPU6050 mpu; // gyro device
 bool noGyro = false;
 
@@ -95,18 +97,16 @@ void setup() {
   
 }
 
-bool doLightning = false;
-
 void loop() {
 
-  EVERY_N_MILLISECONDS( 1000/FRAMES_PER_SECOND ) { gHue += 16; } // slowly cycle the "base color" through the rainbow
+  EVERY_N_MILLISECONDS( 1000/FRAMES_PER_SECOND ) { gHue += 1; rainbowHue +=16; } // slowly cycle the "base color" through the rainbow
   EVERY_N_MILLISECONDS( 100 ) { calculateCoords(); } // calculate tilt angles
 //  EVERY_N_MILLISECONDS( 5000 ) { doLightning = doLightning ? false : true; } // calculate tilt angles
 
   for(int x = 0; x < NUM_STRIPS ; x++){
     
 //    rainbow(x);
-    if(angles[x] <= RAINBOW_ANGLE){
+    if(false && angles[x] <= RAINBOW_ANGLE){
       rainbow(x, coords[x]);
     } else {
       if(doLightning){
@@ -212,7 +212,7 @@ void lightning( fract8 chanceOfLightning, int strip)
 
 void rainbow(int strip, uint8_t howfar) 
 {
-  fill_rainbow( leds[strip], howfar ? howfar : NUM_LEDS, gHue, 7);
+  fill_rainbow( leds[strip], howfar ? howfar : NUM_LEDS, rainbowHue, 7);
 }
 
 //void rainbowWithGlitter(int strip) 
